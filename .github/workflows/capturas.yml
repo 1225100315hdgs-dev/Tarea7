@@ -1,0 +1,62 @@
+name: Capturas
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capturas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generar carpetas de plataforma sin tocar el codigo
+        shell: bash
+        run: |
+          cp -r lib /tmp/lib_bak
+          cp -r test /tmp/test_bak
+          cp pubspec.yaml /tmp/pubspec_bak.yaml
+          flutter create . --platforms=web --project-name vidrieria_cristal
+          rm -rf lib test
+          cp -r /tmp/lib_bak lib
+          cp -r /tmp/test_bak test
+          cp /tmp/pubspec_bak.yaml pubspec.yaml
+
+      - run: flutter pub get
+
+      - run: flutter test
+
+      - name: Compilar web (splash mas largo para poder capturarlo)
+        run: flutter build web --release --dart-define=SPLASH=14
+
+      - name: Servir la app
+        run: |
+          cd build/web
+          nohup python3 -m http.server 8080 > /dev/null 2>&1 &
+          sleep 3
+
+      - name: Tomar capturas
+        shell: bash
+        run: |
+          cd tool
+          npm init -y > /dev/null
+          npm i playwright
+          npx playwright install --with-deps chromium
+          cd ..
+          node tool/capturas.mjs
+
+      - name: Subir capturas al repositorio
+        if: always()
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Capturas del flujo de la app"
+          file_pattern: docs/screenshots/*.png
